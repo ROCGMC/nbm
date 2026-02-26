@@ -1,1 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猜數字</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        textarea { width: 100%; height: 80px; font-size: 12px; margin: 10px 0; border: 1px solid #ddd; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        .hidden { display: none; }
+        .log { background: #333; color: #0f0; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+    </style>
+</head>
+<body>
 
+<div class="card">
+    <h2 id="title">🔐 本地帳號登入</h2>
+    
+    <div id="auth-ui">
+        <input type="text" id="username" placeholder="玩家名稱" style="display:block; margin-bottom:10px; width:94%; padding:8px;">
+        <input type="password" id="password" placeholder="密碼" style="display:block; margin-bottom:10px; width:94%; padding:8px;">
+        <button onclick="handleAuth()">註冊/登入</button>
+    </div>
+
+    <div id="lobby-ui" class="hidden">
+        <p>歡迎, <span id="display-name"></span></p>
+        <hr>
+        <h3>步驟 1: 建立連線</h3>
+        <button onclick="initiateOffer()">我是房主 (建立 Offer)</button>
+        <p>複製下方代碼給朋友：</p>
+        <textarea id="local-offer" readonly placeholder="產生的 Offer 會出現在這"></textarea>
+        
+        <hr>
+        <h3>步驟 2: 回應連線</h3>
+        <p>貼上對手的代碼：</p>
+        <textarea id="remote-offer" placeholder="在此貼上 Offer 或 Answer"></textarea>
+        <button onclick="acceptRemote()">確認連線 / 回傳 Answer</button>
+    </div>
+
+    <div id="game-ui" class="hidden">
+        <h3 id="game-status">遊戲連線成功！</h3>
+        <div class="log" id="game-log"></div>
+        <div style="margin-top:10px;">
+            <input type="number" id="guess-input" placeholder="猜 1-100">
+            <button onclick="sendGuess()">送出</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    let dc; // Data Channel
+    let targetNum = Math.floor(Math.random() * 100) + 1;
+
+    // --- 帳密系統 ---
+    function handleAuth() {
+        const u = document.getElementById('username').value;
+        const p = document.getElementById('password').value;
+        if(!u || !p) return alert("請輸入完整");
+        
+        const saved = localStorage.getItem(`user_${u}`);
+        if (saved && saved !== p) return alert("密碼錯誤");
+        
+        localStorage.setItem(`user_${u}`, p);
+        document.getElementById('display-name').innerText = u;
+        document.getElementById('auth-ui').classList.add('hidden');
+        document.getElementById('lobby-ui').classList.remove('hidden');
+    }
+
+    // --- WebRTC P2P 邏輯 ---
+    pc.onicecandidate = e => {
+        if (e.candidate) return; // 等待所有 Candidate 收集完畢
+        document.getElementById('local-offer').value = btoa(JSON.stringify(pc.localDescription));
+    };
+
+    pc.ondatachannel = e => {
+        dc = e.channel;
+        setupDataChannel();
+    };
+
+    // 房主：發起連線
+    async function initiateOffer() {
+        dc = pc.createDataChannel("game");
+        setupDataChannel();
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+    }
+
+    // 接受者：處理 Offer 或 Answer
+    async function acceptRemote() {
+        const remoteData = JSON.parse(atob(document.getElementById('remote-offer').value));
+        if (remoteData.type === "offer") {
+            await pc.setRemoteDescription(remoteData);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+        } else {
+            await pc.setRemoteDescription(remoteData);
+        }
+    }
+
+    function setupDataChannel() {
+        dc.onopen = () => {
+            document.getElementById('lobby-ui').classList.add('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
+            log("連線建立！開始遊戲...");
+        };
+        dc.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if(data.type === 'guess') {
+                const res = data.val == targetNum ? "答對了!" : (data.val > targetNum ? "太大了" : "太小了");
+                log(`對手猜了 ${data.val}: ${res}`);
+                dc.send(JSON.stringify({type: 'result', res: res, val: data.val}));
+            } else {
+                log(`我猜 ${data.val}: ${data.res}`);
+            }
+        };
+    }
+
+    function sendGuess() {
+        const val = document.getElementById('guess-input').value;
+        dc.send(JSON.stringify({type: 'guess', val: val}));
+        document.getElementById('guess-input').value = '';
+    }
+
+    function log(msg) {
+        const l = document.getElementById('game-log');
+        l.innerHTML += `<div>> ${msg}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
