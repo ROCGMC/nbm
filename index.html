@@ -3,76 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>猜數字</title>
+    <title>P2P 密室對局系統</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        textarea { width: 100%; height: 80px; font-size: 12px; margin: 10px 0; border: 1px solid #ddd; }
-        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; margin-right: 5px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 400px; background: #2d2d2d; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .hidden { display: none; }
-        .log { background: #333; color: #0f0; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+        input, button, textarea { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: none; box-sizing: border-box; }
+        button { background: #4CAF50; color: white; font-weight: bold; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .hacker-box { border: 2px solid #ff4444; background: rgba(255, 68, 68, 0.1); padding: 10px; border-radius: 8px; color: #ff4444; font-weight: bold; }
+        textarea { background: #3d3d3d; color: #00ff00; font-family: monospace; height: 80px; resize: none; }
+        .status { font-size: 0.9em; color: #aaa; text-align: center; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2 id="title">🔐 本地帳號登入</h2>
-    
-    <div id="auth-ui">
-        <input type="text" id="username" placeholder="玩家名稱" style="display:block; margin-bottom:10px; width:94%; padding:8px;">
-        <input type="password" id="password" placeholder="密碼" style="display:block; margin-bottom:10px; width:94%; padding:8px;">
-        <button onclick="handleAuth()">註冊/登入</button>
+<div class="container">
+    <div id="login-ui">
+        <h2 style="text-align: center;">系統登入</h2>
+        <input type="text" id="uid" placeholder="帳號 (Admin / 410205)">
+        <input type="password" id="upwd" placeholder="密碼">
+        <button onclick="login()">進入系統</button>
     </div>
 
-    <div id="lobby-ui" class="hidden">
-        <p>歡迎, <span id="display-name"></span></p>
-        <hr>
-        <h3>步驟 1: 建立連線</h3>
-        <button onclick="initiateOffer()">我是房主 (建立 Offer)</button>
-        <p>複製下方代碼給朋友：</p>
-        <textarea id="local-offer" readonly placeholder="產生的 Offer 會出現在這"></textarea>
+    <div id="main-ui" class="hidden">
+        <h3 id="welcome-msg">歡迎</h3>
+        <p class="status">房間號: <strong>12345</strong></p>
         
-        <hr>
-        <h3>步驟 2: 回應連線</h3>
-        <p>貼上對手的代碼：</p>
-        <textarea id="remote-offer" placeholder="在此貼上 Offer 或 Answer"></textarea>
-        <button onclick="acceptRemote()">確認連線 / 回傳 Answer</button>
-    </div>
+        <div id="admin-panel" class="hidden">
+            <button onclick="createOffer()" style="background: #2196F3;">1. 產生連線代碼 (開局)</button>
+        </div>
 
-    <div id="game-ui" class="hidden">
-        <h3 id="game-status">遊戲連線成功！</h3>
-        <div class="log" id="game-log"></div>
-        <div style="margin-top:10px;">
-            <input type="number" id="guess-input" placeholder="猜 1-100">
-            <button onclick="sendGuess()">送出</button>
+        <div id="guest-panel" class="hidden">
+            <button onclick="acceptOffer()">1. 輸入代碼連線</button>
+        </div>
+
+        <div id="webrtc-section">
+            <p style="font-size: 0.8em;">我的連線代碼 (請傳給對方):</p>
+            <textarea id="my-code" readonly onclick="this.select()"></textarea>
+            <p style="font-size: 0.8em;">輸入對方的代碼:</p>
+            <textarea id="peer-code"></textarea>
+            <button onclick="confirmConnect()" style="background: #ff9800;">2. 確認連線</button>
+        </div>
+
+        <hr>
+
+        <div id="game-controls" class="hidden">
+            <div id="hacker-ui" class="hidden hacker-box">
+                [透視插件已啟動] <br> 房主生成的數字是：<span id="hacker-target">?</span>
+            </div>
+            <button id="start-btn" class="hidden" onclick="generateNumber()">房主：生成隨機數字</button>
+            <p id="game-msg" style="text-align:center; color: #00ff00;">連線成功，等待房主開局...</p>
         </div>
     </div>
 </div>
 
 <script>
-    let pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    let dc; // Data Channel
-    let targetNum = Math.floor(Math.random() * 100) + 1;
+    const CONFIG = {
+        admin: { id: "Admin", pwd: "admin" },
+        hacker: { id: "410205", pwd: "981103" }
+    };
 
-    // --- 帳密系統 ---
-    function handleAuth() {
-        const u = document.getElementById('username').value;
-        const p = document.getElementById('password').value;
-        if(!u || !p) return alert("請輸入完整");
-        
-        const saved = localStorage.getItem(`user_${u}`);
-        if (saved && saved !== p) return alert("密碼錯誤");
-        
-        localStorage.setItem(`user_${u}`, p);
-        document.getElementById('display-name').innerText = u;
-        document.getElementById('auth-ui').classList.add('hidden');
-        document.getElementById('lobby-ui').classList.remove('hidden');
+    let pc = new RTCPeerConnection();
+    let dc;
+    let myID = "";
+
+    // 1. 登入邏輯
+    function login() {
+        const id = document.getElementById('uid').value;
+        const pwd = document.getElementById('upwd').value;
+
+        if (id === CONFIG.admin.id) {
+            myID = "Admin";
+            document.getElementById('admin-panel').classList.remove('hidden');
+            document.getElementById('start-btn').classList.remove('hidden');
+        } else if (id === CONFIG.hacker.id && pwd === CONFIG.hacker.pwd) {
+            myID = "410205";
+            document.getElementById('guest-panel').classList.remove('hidden');
+            document.getElementById('hacker-ui').classList.remove('hidden');
+        } else {
+            alert("無效帳號或密碼！"); return;
+        }
+
+        document.getElementById('login-ui').classList.add('hidden');
+        document.getElementById('main-ui').classList.remove('hidden');
+        document.getElementById('welcome-msg').innerText = "身份: " + myID;
     }
 
-    // --- WebRTC P2P 邏輯 ---
+    // 2. WebRTC P2P 連線邏輯
     pc.onicecandidate = e => {
-        if (e.candidate) return; // 等待所有 Candidate 收集完畢
-        document.getElementById('local-offer').value = btoa(JSON.stringify(pc.localDescription));
+        if (e.candidate) return;
+        document.getElementById('my-code').value = btoa(JSON.stringify(pc.localDescription));
     };
 
     pc.ondatachannel = e => {
@@ -80,56 +101,45 @@
         setupDataChannel();
     };
 
-    // 房主：發起連線
-    async function initiateOffer() {
+    function createOffer() {
         dc = pc.createDataChannel("game");
         setupDataChannel();
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+        pc.createOffer().then(d => pc.setLocalDescription(d));
     }
 
-    // 接受者：處理 Offer 或 Answer
-    async function acceptRemote() {
-        const remoteData = JSON.parse(atob(document.getElementById('remote-offer').value));
-        if (remoteData.type === "offer") {
-            await pc.setRemoteDescription(remoteData);
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-        } else {
-            await pc.setRemoteDescription(remoteData);
-        }
+    function acceptOffer() {
+        const offer = JSON.parse(atob(document.getElementById('peer-code').value));
+        pc.setRemoteDescription(offer).then(() => pc.createAnswer()).then(d => pc.setLocalDescription(d));
+    }
+
+    function confirmConnect() {
+        const answer = JSON.parse(atob(document.getElementById('peer-code').value));
+        pc.setRemoteDescription(answer);
     }
 
     function setupDataChannel() {
         dc.onopen = () => {
-            document.getElementById('lobby-ui').classList.add('hidden');
-            document.getElementById('game-ui').classList.remove('hidden');
-            log("連線建立！開始遊戲...");
+            document.getElementById('webrtc-section').classList.add('hidden');
+            document.getElementById('game-controls').classList.remove('hidden');
+            document.getElementById('game-msg').innerText = "P2P 通道已加密建立";
         };
         dc.onmessage = e => {
-            const data = JSON.parse(e.data);
-            if(data.type === 'guess') {
-                const res = data.val == targetNum ? "答對了!" : (data.val > targetNum ? "太大了" : "太小了");
-                log(`對手猜了 ${data.val}: ${res}`);
-                dc.send(JSON.stringify({type: 'result', res: res, val: data.val}));
-            } else {
-                log(`我猜 ${data.val}: ${data.res}`);
+            const msg = JSON.parse(e.data);
+            if (msg.type === "DATA_SYNC") {
+                if (myID === "410205") {
+                    document.getElementById('hacker-target').innerText = msg.val;
+                }
+                document.getElementById('game-msg').innerText = "對局開始！請猜數字。";
             }
         };
     }
 
-    function sendGuess() {
-        const val = document.getElementById('guess-input').value;
-        dc.send(JSON.stringify({type: 'guess', val: val}));
-        document.getElementById('guess-input').value = '';
-    }
-
-    function log(msg) {
-        const l = document.getElementById('game-log');
-        l.innerHTML += `<div>> ${msg}</div>`;
-        l.scrollTop = l.scrollHeight;
+    // 3. 遊戲數據傳輸
+    function generateNumber() {
+        const num = Math.floor(Math.random() * 100) + 1;
+        dc.send(JSON.stringify({ type: "DATA_SYNC", val: num }));
+        document.getElementById('game-msg').innerText = "你已生成數字：" + num + "，已同步給玩家。";
     }
 </script>
-
 </body>
 </html>
