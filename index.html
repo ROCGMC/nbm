@@ -1,145 +1,23 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P 密室對局系統</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; padding: 20px; }
-        .container { width: 100%; max-width: 400px; background: #2d2d2d; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .hidden { display: none; }
-        input, button, textarea { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: none; box-sizing: border-box; }
-        button { background: #4CAF50; color: white; font-weight: bold; cursor: pointer; }
-        button:hover { background: #45a049; }
-        .hacker-box { border: 2px solid #ff4444; background: rgba(255, 68, 68, 0.1); padding: 10px; border-radius: 8px; color: #ff4444; font-weight: bold; }
-        textarea { background: #3d3d3d; color: #00ff00; font-family: monospace; height: 80px; resize: none; }
-        .status { font-size: 0.9em; color: #aaa; text-align: center; }
-    </style>
+    <title>多人猜數字 PWA</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
-
-<div class="container">
-    <div id="login-ui">
-        <h2 style="text-align: center;">系統登入</h2>
-        <input type="text" id="uid" placeholder="帳號 (Admin / 410205)">
-        <input type="password" id="upwd" placeholder="密碼">
-        <button onclick="login()">進入系統</button>
+    <div id="app">
+        <h1>猜數字大戰</h1>
+        <div id="status">正在連線...</div>
+        <input type="number" id="guessInput" placeholder="輸入 1-100">
+        <button onclick="sendGuess()">送出數字</button>
+        <ul id="history"></ul>
     </div>
 
-    <div id="main-ui" class="hidden">
-        <h3 id="welcome-msg">歡迎</h3>
-        <p class="status">房間號: <strong>12345</strong></p>
-        
-        <div id="admin-panel" class="hidden">
-            <button onclick="createOffer()" style="background: #2196F3;">1. 產生連線代碼 (開局)</button>
-        </div>
-
-        <div id="guest-panel" class="hidden">
-            <button onclick="acceptOffer()">1. 輸入代碼連線</button>
-        </div>
-
-        <div id="webrtc-section">
-            <p style="font-size: 0.8em;">我的連線代碼 (請傳給對方):</p>
-            <textarea id="my-code" readonly onclick="this.select()"></textarea>
-            <p style="font-size: 0.8em;">輸入對方的代碼:</p>
-            <textarea id="peer-code"></textarea>
-            <button onclick="confirmConnect()" style="background: #ff9800;">2. 確認連線</button>
-        </div>
-
-        <hr>
-
-        <div id="game-controls" class="hidden">
-            <div id="hacker-ui" class="hidden hacker-box">
-                [透視插件已啟動] <br> 房主生成的數字是：<span id="hacker-target">?</span>
-            </div>
-            <button id="start-btn" class="hidden" onclick="generateNumber()">房主：生成隨機數字</button>
-            <p id="game-msg" style="text-align:center; color: #00ff00;">連線成功，等待房主開局...</p>
-        </div>
-    </div>
-</div>
-
-<script>
-    const CONFIG = {
-        admin: { id: "Admin", pwd: "admin" },
-        hacker: { id: "410205", pwd: "981103" }
-    };
-
-    let pc = new RTCPeerConnection();
-    let dc;
-    let myID = "";
-
-    // 1. 登入邏輯
-    function login() {
-        const id = document.getElementById('uid').value;
-        const pwd = document.getElementById('upwd').value;
-
-        if (id === CONFIG.admin.id) {
-            myID = "Admin";
-            document.getElementById('admin-panel').classList.remove('hidden');
-            document.getElementById('start-btn').classList.remove('hidden');
-        } else if (id === CONFIG.hacker.id && pwd === CONFIG.hacker.pwd) {
-            myID = "410205";
-            document.getElementById('guest-panel').classList.remove('hidden');
-            document.getElementById('hacker-ui').classList.remove('hidden');
-        } else {
-            alert("無效帳號或密碼！"); return;
-        }
-
-        document.getElementById('login-ui').classList.add('hidden');
-        document.getElementById('main-ui').classList.remove('hidden');
-        document.getElementById('welcome-msg').innerText = "身份: " + myID;
-    }
-
-    // 2. WebRTC P2P 連線邏輯
-    pc.onicecandidate = e => {
-        if (e.candidate) return;
-        document.getElementById('my-code').value = btoa(JSON.stringify(pc.localDescription));
-    };
-
-    pc.ondatachannel = e => {
-        dc = e.channel;
-        setupDataChannel();
-    };
-
-    function createOffer() {
-        dc = pc.createDataChannel("game");
-        setupDataChannel();
-        pc.createOffer().then(d => pc.setLocalDescription(d));
-    }
-
-    function acceptOffer() {
-        const offer = JSON.parse(atob(document.getElementById('peer-code').value));
-        pc.setRemoteDescription(offer).then(() => pc.createAnswer()).then(d => pc.setLocalDescription(d));
-    }
-
-    function confirmConnect() {
-        const answer = JSON.parse(atob(document.getElementById('peer-code').value));
-        pc.setRemoteDescription(answer);
-    }
-
-    function setupDataChannel() {
-        dc.onopen = () => {
-            document.getElementById('webrtc-section').classList.add('hidden');
-            document.getElementById('game-controls').classList.remove('hidden');
-            document.getElementById('game-msg').innerText = "P2P 通道已加密建立";
-        };
-        dc.onmessage = e => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "DATA_SYNC") {
-                if (myID === "410205") {
-                    document.getElementById('hacker-target').innerText = msg.val;
-                }
-                document.getElementById('game-msg').innerText = "對局開始！請猜數字。";
-            }
-        };
-    }
-
-    // 3. 遊戲數據傳輸
-    function generateNumber() {
-        const num = Math.floor(Math.random() * 100) + 1;
-        dc.send(JSON.stringify({ type: "DATA_SYNC", val: num }));
-        document.getElementById('game-msg').innerText = "你已生成數字：" + num + "，已同步給玩家。";
-    }
-</script>
+    <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-database-compat.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
