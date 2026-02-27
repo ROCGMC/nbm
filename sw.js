@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zt-game-v3';
+const CACHE_NAME = 'zt-game-v4';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['./', './index.html'])));
 });
