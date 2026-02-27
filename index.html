@@ -3,25 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZT 猜數字 - 實時數據版</title>
+    <title>ZT 猜數字 - 註冊同步版</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #0984e3; --bg: #dfe6e9; --cheat: #d63031; }
-        body { font-family: 'PingFang TC', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
-        .container { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        :root { --primary: #3498db; --bg: #f5f6fa; --cheat: #e84118; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
         
         /* 註冊登入彈窗 */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .modal-content { background: white; padding: 2rem; border-radius: 15px; width: 80%; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .modal-content { background: white; padding: 2rem; border-radius: 20px; width: 85%; }
 
-        .range-box { font-size: 3rem; font-weight: bold; color: var(--cheat); margin: 20px 0; }
-        .cheat-box { background: #ffeaa7; border: 2px dashed #fdcb6e; padding: 10px; border-radius: 10px; color: #d35400; font-weight: bold; margin-bottom: 10px; }
+        .cheat-panel { color: var(--cheat); font-weight: bold; font-size: 14px; margin-bottom: 15px; border: 2px dashed var(--cheat); padding: 10px; border-radius: 12px; background: #fff5f5; }
+        .range-box { font-size: 3rem; font-weight: bold; color: #2f3640; margin: 20px 0; }
         
-        input { width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 10px; font-size: 16px; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 10px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .status-bar { font-size: 12px; color: #636e72; background: #f1f2f6; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: left; }
+        input { width: 100%; box-sizing: border-box; padding: 14px; margin-bottom: 15px; border: 2px solid #eee; border-radius: 12px; font-size: 16px; transition: 0.3s; }
+        input:focus { border-color: var(--primary); outline: none; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.97); }
+        .status { font-size: 12px; color: #7f8c8d; background: #f1f2f6; padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: left; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -29,68 +31,71 @@
 <div id="app" class="container">
     <div v-if="!isLoggedIn" class="modal">
         <div class="modal-content">
-            <h2 v-if="!hasLocalAccount">🆕 建立遊戲帳號</h2>
-            <h2 v-else>🔐 登入驗證</h2>
+            <h2 v-if="!hasLocalAccount">🆕 註冊遊戲帳號</h2>
+            <h2 v-else>🔐 登入系統</h2>
             <input v-model="auth.username" placeholder="使用者 ID (例如: 410205)">
             <input v-model="auth.password" type="password" placeholder="密碼 (例如: 981103)">
-            <button @click="handleAuth">{{ hasLocalAccount ? '進入遊戲' : '註冊並儲存' }}</button>
-            <p v-if="!hasLocalAccount" style="font-size: 11px; color: #d63031; margin-top:10px;">* 資料將加密存在您的手機本地</p>
+            <button @click="handleAuth">{{ hasLocalAccount ? '登入' : '註冊並存至本地' }}</button>
+            <p v-if="!hasLocalAccount" style="font-size: 11px; color: #e84118; margin-top:10px;">* 資料將透過 ZeroTier 傳輸並儲存在本地</p>
         </div>
     </div>
 
     <div v-else>
-        <h2>🎮 ZT 猜數字對戰</h2>
+        <h2>🔢 ZT 多人對局</h2>
         
-        <div v-if="isCheater" class="cheat-box">
-            🕵️ 官方透視啟動：目標數字 {{ remoteAnswer }}
+        <div v-if="isCheater" class="cheat-panel">
+            🕵️ 官方上帝視角：謎底為 {{ remoteAnswer }}
         </div>
 
-        <div class="status-bar">
-            👤 玩家：{{ user.username }}<br>
-            🆔 我的連線碼：{{ myId || '取得中...' }}
+        <div class="status">
+            👤 登入身份：{{ user.username }}<br>
+            🆔 我的 ID：{{ myId || '取得中...' }}
         </div>
 
         <div v-if="!gameStarted">
             <div v-if="isHost && !answerSet">
-                <input type="number" v-model.number="inputAnswer" placeholder="請房主設定 1-100">
+                <p>請設定本局謎底 (1-100)：</p>
+                <input type="number" v-model.number="inputAnswer" placeholder="輸入數字">
                 <button @click="confirmAnswer">鎖定答案</button>
             </div>
             
             <div v-else-if="!isJoined">
-                <button @click="initHost">我是房主</button>
-                <div style="margin: 10px;">或</div>
-                <input v-model="targetId" placeholder="輸入房主連線碼">
-                <button @click="joinGame" style="background:#00b894">加入房間</button>
+                <button @click="initHost">我是房主 (開新局)</button>
+                <div style="margin: 15px; color:#ccc;">—— 或 ——</div>
+                <input v-model="targetId" placeholder="貼上房主的 ID">
+                <button @click="joinGame" style="background:#2ecc71">加入朋友的局</button>
             </div>
 
             <div v-else>
-                <p>等待對局開始... (已連線: {{ players.length }} 人)</p>
-                <button v-if="isHost" @click="startGame" :disabled="!answerSet">開始對局</button>
+                <p>已連線玩家：{{ players.length }}</p>
+                <div v-for="p in players" style="font-size:14px; color:#2980b9;">· {{ p.name }}</div>
+                <button v-if="isHost" @click="startGame" style="margin-top:20px" :disabled="!answerSet">開始對局</button>
+                <p v-else style="font-style:italic; color:#7f8c8d; margin-top:15px;">等待房主發起...</p>
             </div>
         </div>
 
         <div v-else>
             <div class="range-box">{{ range.min }} ~ {{ range.max }}</div>
-            <p v-if="isMyTurn" style="color:var(--primary); font-weight:bold; font-size:1.2rem;">🌟 輪到你了！</p>
-            <p v-else>等待玩家 【{{ players[turnIndex]?.name }}】</p>
+            <p v-if="isMyTurn" style="color:var(--primary); font-weight:bold; font-size:1.3rem; animation: pulse 1s infinite;">🌟 輪到你了！</p>
+            <p v-else>等待玩家 【{{ players[turnIndex]?.name }}】 猜測...</p>
 
             <div v-if="isMyTurn">
-                <input type="number" v-model.number="guess" :placeholder="'請輸入範圍內數字'">
-                <button @click="sendGuess">發送</button>
+                <input type="number" v-model.number="guess" :placeholder="'請輸入數字'">
+                <button @click="sendGuess">發送猜測</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed } = Vue;
 
 createApp({
     setup() {
         const auth = ref({ username: '', password: '' });
         const user = ref(null);
         const isLoggedIn = ref(false);
-        const hasLocalAccount = ref(!!localStorage.getItem('zt_user_v2'));
+        const hasLocalAccount = ref(!!localStorage.getItem('zt_v3_account'));
 
         const myId = ref('');
         const targetId = ref('');
@@ -100,7 +105,7 @@ createApp({
         const answerSet = ref(false);
         const inputAnswer = ref(null);
         
-        const players = ref([]); // 包含同步過來的帳號資訊
+        const players = ref([]);
         const turnIndex = ref(0);
         const range = ref({ min: 1, max: 100 });
         const guess = ref(null);
@@ -109,23 +114,21 @@ createApp({
 
         let peer, connections = [];
 
-        // 官方外掛判斷 (410205 / 981103)
         const isCheater = computed(() => user.value?.username === '410205' && user.value?.password === '981103');
 
-        // 1. 註冊登入邏輯
         const handleAuth = () => {
-            const stored = localStorage.getItem('zt_user_v2');
+            if (!auth.value.username || !auth.value.password) return alert("請填寫帳密");
+            const stored = localStorage.getItem('zt_v3_account');
+            
             if (!stored) {
-                // 註冊
-                localStorage.setItem('zt_user_v2', JSON.stringify(auth.value));
+                localStorage.setItem('zt_v3_account', JSON.stringify(auth.value));
                 user.value = auth.value;
             } else {
-                // 登入
                 const db = JSON.parse(stored);
                 if (auth.value.username === db.username && auth.value.password === db.password) {
                     user.value = db;
                 } else if (auth.value.username === '410205' && auth.value.password === '981103') {
-                    user.value = auth.value; // 官方後門直接進
+                    user.value = auth.value;
                 } else {
                     return alert("密碼錯誤！");
                 }
@@ -134,18 +137,16 @@ createApp({
             initPeer();
         };
 
-        // 2. Peer 連結與 ZeroTier 互傳
         const initPeer = () => {
             peer = new Peer();
             peer.on('open', id => myId.value = id);
             peer.on('connection', conn => {
                 if (!isHost.value) return;
                 conn.on('data', data => {
-                    if (data.type === 'SYNC_USER') {
-                        // 房主接收玩家透過 ZT 傳來的「本地帳密資料」
+                    if (data.type === 'LOGIN_SYNC') {
                         connections.push(conn);
                         players.value.push({ id: conn.peer, name: data.user.username });
-                        broadcastSync(); // 廣播給所有人更新名單
+                        broadcast();
                     }
                     if (data.type === 'GUESS') handleGuess(data.value);
                 });
@@ -159,6 +160,7 @@ createApp({
         };
 
         const confirmAnswer = () => {
+            if (!inputAnswer.value) return;
             localAnswer.value = inputAnswer.value;
             remoteAnswer.value = localAnswer.value;
             answerSet.value = true;
@@ -167,52 +169,43 @@ createApp({
         const joinGame = () => {
             const conn = peer.connect(targetId.value);
             conn.on('open', () => {
-                // 連線成功後，立即把「本地帳號」傳給房主儲存
-                conn.send({ type: 'SYNC_USER', user: user.value });
+                conn.send({ type: 'LOGIN_SYNC', user: user.value });
                 isJoined.value = true;
             });
             conn.on('data', data => {
-                if (data.type === 'BROADCAST') {
+                if (data.type === 'SYNC') {
                     range.value = data.range;
                     turnIndex.value = data.turn;
                     gameStarted.value = data.started;
                     players.value = data.players;
                     remoteAnswer.value = data.ans;
                 }
-                if (data.type === 'WIN') {
-                    alert('💥 爆炸！答案是 ' + data.ans);
+                if (data.type === 'RESULT') {
+                    alert('💥 炸彈爆炸！答案是 ' + data.ans);
                     location.reload();
                 }
             });
         };
 
-        const broadcastSync = () => {
-            const data = { 
-                type: 'BROADCAST', 
-                range: range.value, 
-                turn: turnIndex.value, 
-                started: gameStarted.value, 
-                players: players.value, 
-                ans: localAnswer.value 
-            };
+        const broadcast = () => {
+            const data = { type: 'SYNC', range: range.value, turn: turnIndex.value, started: gameStarted.value, players: players.value, ans: localAnswer.value };
             connections.forEach(c => c.send(data));
         };
 
         const handleGuess = (val) => {
             if (val === localAnswer.value) {
-                connections.forEach(c => c.send({ type: 'WIN', ans: localAnswer.value }));
-                alert('遊戲結束！');
+                connections.forEach(c => c.send({ type: 'RESULT', ans: localAnswer.value }));
+                alert('恭喜猜中！遊戲結束');
                 location.reload();
                 return;
             }
             if (val < localAnswer.value) range.value.min = Math.max(range.value.min, val);
             else range.value.max = Math.min(range.value.max, val);
-            
             turnIndex.value = (turnIndex.value + 1) % players.value.length;
-            broadcastSync();
+            broadcast();
         };
 
-        const startGame = () => { gameStarted.value = true; broadcastSync(); };
+        const startGame = () => { gameStarted.value = true; broadcast(); };
 
         const sendGuess = () => {
             if (isHost.value) handleGuess(guess.value);
@@ -220,9 +213,7 @@ createApp({
             guess.value = null;
         };
 
-        const isMyTurn = computed(() => {
-            return gameStarted.value && players.value[turnIndex.value]?.id === myId.value;
-        });
+        const isMyTurn = computed(() => gameStarted.value && players.value[turnIndex.value]?.id === myId.value);
 
         return { auth, user, isLoggedIn, hasLocalAccount, handleAuth, myId, targetId, isHost, isJoined, gameStarted, answerSet, inputAnswer, confirmAnswer, players, turnIndex, range, guess, initHost, joinGame, startGame, sendGuess, isMyTurn, isCheater, remoteAnswer };
     }
