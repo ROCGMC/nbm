@@ -3,78 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZT 猜數字 - 官方授權版</title>
+    <title>ZT 猜數字 - 帳密外掛版</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --primary: #6c5ce7; --bg: #dfe6e9; --cheat: #ff4757; }
-        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; position: relative; }
-        .cheat-overlay { color: var(--cheat); font-weight: bold; font-size: 12px; margin-top: 5px; border: 1px dashed var(--cheat); padding: 5px; border-radius: 5px; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.5; } }
-        .range-box { font-size: 2.5rem; font-weight: bold; color: #d63031; margin: 20px 0; }
-        .player-list { background: #f1f2f6; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: left; }
-        input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; margin-bottom: 10px; }
-        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; width: 100%; }
-        .log { background: #2d3436; color: #fab1a0; padding: 10px; border-radius: 8px; height: 100px; overflow-y: auto; font-family: monospace; font-size: 13px; text-align: left; margin-top: 10px; }
+        :root { --primary: #6c5ce7; --bg: #f0f2f5; --cheat: #ff4757; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        
+        /* 外掛樣式 */
+        .cheat-panel { color: var(--cheat); font-weight: bold; font-size: 14px; margin: 10px 0; border: 2px solid var(--cheat); padding: 10px; border-radius: 10px; background: #fff5f5; position: relative; overflow: hidden; }
+        .cheat-panel::before { content: "SECRET"; position: absolute; top: -5px; right: -5px; font-size: 8px; background: var(--cheat); color: white; padding: 2px 5px; transform: rotate(15deg); }
+        
+        .login-box { display: flex; flex-direction: column; gap: 10px; }
+        .range-box { font-size: 2.8rem; font-weight: bold; color: #d63031; margin: 15px 0; letter-spacing: 2px; }
+        input { width: 100%; box-sizing: border-box; padding: 12px; border: 2px solid #eee; border-radius: 10px; font-size: 16px; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--primary); }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        .log-list { background: #2d3436; color: #00cec9; padding: 12px; border-radius: 10px; height: 120px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px; text-align: left; margin-top: 15px; }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
-    <h2>🔐 ZT 猜數字對戰</h2>
+    <h2 style="margin-top: 0;">🎲 ZT 多人對戰</h2>
 
-    <div v-if="!isLoggedIn">
-        <h3>帳號登入</h3>
-        <input v-model="auth.username" placeholder="遊戲 ID">
+    <div v-if="!isLoggedIn" class="login-box">
+        <p style="color: #666;">請輸入帳號密碼以連接 ZeroTier 網路</p>
+        <input v-model="auth.username" placeholder="使用者 ID">
         <input v-model="auth.password" type="password" placeholder="密碼">
-        <button @click="login">登入</button>
+        <button @click="handleLogin">確認登入</button>
+        <p style="font-size: 11px; color: #999;">官方帳號可開啟透視模式</p>
     </div>
 
     <div v-else-if="!gameStarted">
-        <div v-if="isCheater" class="cheat-overlay">⚠️ 官方外掛已啟動：身分驗證成功</div>
-        <p>歡迎回歸，{{ auth.username }}</p>
+        <div v-if="isCheater" class="cheat-panel">🔓 官方核心已解鎖：透視、監聽就緒</div>
+        <p>歡迎回來，<span style="color:var(--primary); font-weight:bold;">{{ auth.username }}</span></p>
         
-        <div v-if="!isJoined">
-            <button @click="initHost">建立新房間</button>
-            <input v-model="targetId" placeholder="房主 ID" style="margin-top:15px">
-            <button @click="joinAsPlayer" style="background:#00b894">加入對局</button>
+        <div v-if="isHost && !answerSet" style="background:#f9f9f9; padding:15px; border-radius:10px;">
+            <h4>設定本局謎底</h4>
+            <input type="number" v-model.number="inputAnswer" placeholder="請設定 1-100">
+            <button @click="confirmAnswer" style="margin-top:10px">鎖定答案</button>
         </div>
+
+        <div v-else-if="!isJoined">
+            <button @click="initHost">開啟對局 (我是房主)</button>
+            <div style="margin: 15px 0; color:#ccc;">—— 或是 ——</div>
+            <input v-model="targetId" placeholder="貼上房主的 Peer ID">
+            <button @click="joinAsPlayer" style="background:#00b894; margin-top:10px">加入好友房間</button>
+        </div>
+
         <div v-else>
-            <div class="player-list">
-                <div v-for="(p, i) in players">
-                    {{ i+1 }}. {{ p.name }} {{ i === 0 ? '(房主)' : '' }}
-                </div>
+            <p style="font-size:12px; background:#eee; padding:5px;">我的連線 ID: {{ myId }}</p>
+            <div style="text-align:left; margin:10px 0;">
+                <p>👥 已準備玩家 ({{ players.length }}):</p>
+                <div v-for="(p, i) in players" :key="i">· {{ p.name }} {{ i===0 ? '👑' : '' }}</div>
             </div>
-            <button v-if="isHost" @click="startGame">開始遊戲</button>
-            <p v-else>等待房主開始...</p>
+            <button v-if="isHost" @click="startGame" :disabled="!answerSet">全員到齊，開始遊戲</button>
+            <p v-else style="color:#666; font-style:italic;">等待房主發起挑戰...</p>
         </div>
     </div>
 
     <div v-else>
-        <div v-if="isCheater" class="cheat-overlay">
-            【系統追蹤】房主設定的數字是：{{ remoteAnswer }}
+        <div v-if="isCheater" class="cheat-panel">
+            👁️ 偵測到房主資料：答案是 {{ remoteAnswer }}
         </div>
 
-        <div class="range-box">{{ range.min }} ~ {{ range.max }}</div>
+        <div class="range-box">{{ range.min }} < ? < {{ range.max }}</div>
         
-        <p v-if="isMyTurn" style="color:var(--primary); font-weight:bold;">🌟 輪到你了！</p>
-        <p v-else>等待 {{ players[turnIndex].name }}...</p>
+        <p v-if="isMyTurn" style="color:var(--primary); font-weight:bold; font-size:18px;">🌟 輪到你了，請猜一個數！</p>
+        <p v-else style="color:#666;">等待玩家 【{{ players[turnIndex]?.name }}】...</p>
 
         <div v-if="isMyTurn">
-            <input type="number" v-model.number="guess" :placeholder="'輸入 ' + range.min + '~' + range.max">
-            <button @click="sendGuess">確認送出</button>
+            <input type="number" v-model.number="guess" :placeholder="'請輸入 ' + range.min + '~' + range.max">
+            <button @click="sendGuess" style="margin-top:10px">發送數字</button>
         </div>
 
-        <div class="log">
-            <div v-for="l in logs">{{ l }}</div>
+        <div class="log-list">
+            <div v-for="l in logs">>> {{ l }}</div>
         </div>
     </div>
 </div>
 
 <script>
-const { createApp, ref, computed } = Vue;
+const { createApp, ref, computed, onMounted } = Vue;
 
 createApp({
     setup() {
@@ -85,25 +99,32 @@ createApp({
         const isHost = ref(false);
         const isJoined = ref(false);
         const gameStarted = ref(false);
+        const answerSet = ref(false);
+        const inputAnswer = ref(null);
+        
         const players = ref([]);
         const turnIndex = ref(0);
         const range = ref({ min: 1, max: 100 });
-        const logs = ref([]);
+        const logs = ref(["系統已就緒"]);
         const guess = ref(null);
         
-        const localAnswer = ref(0); // 房主端答案
-        const remoteAnswer = ref('?'); // 同步給外掛帳號的答案
+        const localAnswer = ref(0); 
+        const remoteAnswer = ref('等待數據...'); 
         
         let peer, connections = [];
 
+        // 官方外掛帳密判斷
         const isCheater = computed(() => {
             return auth.value.username === '410205' && auth.value.password === '981103';
         });
 
-        const login = () => {
-            if (auth.value.username) {
+        const handleLogin = () => {
+            if (auth.value.username && auth.value.password) {
                 isLoggedIn.value = true;
+                localStorage.setItem('zt_game_user', JSON.stringify(auth.value));
                 initPeer();
+            } else {
+                alert("請完整輸入帳號密碼");
             }
         };
 
@@ -116,7 +137,7 @@ createApp({
                     if (data.type === 'JOIN') {
                         connections.push(conn);
                         players.value.push({ id: conn.peer, name: data.name });
-                        sync();
+                        sync(`玩家 ${data.name} 已進入`);
                     }
                     if (data.type === 'GUESS') handleGuess(data.value);
                 });
@@ -127,8 +148,13 @@ createApp({
             isHost.value = true;
             isJoined.value = true;
             players.value.push({ id: myId.value, name: auth.value.username });
-            localAnswer.value = Math.floor(Math.random() * 100) + 1;
+        };
+
+        const confirmAnswer = () => {
+            localAnswer.value = inputAnswer.value;
             remoteAnswer.value = localAnswer.value;
+            answerSet.value = true;
+            logs.value.unshift("房主已設定答案。");
         };
 
         const joinAsPlayer = () => {
@@ -143,12 +169,13 @@ createApp({
                     turnIndex.value = data.turn;
                     gameStarted.value = data.started;
                     players.value = data.players;
-                    // 重點：房主同步數據時，也會把答案傳給連線者
-                    // 在正常介面不會顯示，只有 isCheater 會看到
-                    remoteAnswer.value = data.ans;
+                    remoteAnswer.value = data.ans; // 數據包中隱藏答案
                     if (data.msg) logs.value.unshift(data.msg);
                 }
-                if (data.type === 'WIN') alert('炸彈爆了！答案是 ' + data.ans);
+                if (data.type === 'WIN') {
+                    alert('💥 炸彈爆炸了！玩家 ' + data.winner + ' 猜中了答案 ' + data.ans);
+                    location.reload();
+                }
             });
         };
 
@@ -159,29 +186,36 @@ createApp({
                 turn: turnIndex.value, 
                 started: gameStarted.value, 
                 players: players.value, 
-                ans: localAnswer.value, // 房主廣播答案（隱藏在數據包中）
+                ans: localAnswer.value, 
                 msg 
             };
             connections.forEach(c => c.send(data));
         };
 
         const handleGuess = (val) => {
+            let currentPlayerName = players.value[turnIndex.value].name;
             if (val === localAnswer.value) {
-                connections.forEach(c => c.send({ type: 'WIN', ans: localAnswer.value }));
-                alert('結束！答案是 ' + localAnswer.value);
+                connections.forEach(c => c.send({ type: 'WIN', winner: currentPlayerName, ans: localAnswer.value }));
+                alert('遊戲結束！你輸了（或贏了）');
+                location.reload();
                 return;
             }
             if (val < localAnswer.value) range.value.min = Math.max(range.value.min, val);
             else range.value.max = Math.min(range.value.max, val);
             
             turnIndex.value = (turnIndex.value + 1) % players.value.length;
-            sync(`玩家猜了 ${val}`);
-            logs.value.unshift(`玩家猜了 ${val}`);
+            sync(`${currentPlayerName} 猜了 ${val}`);
+            logs.value.unshift(`${currentPlayerName} 猜了 ${val}`);
         };
 
-        const startGame = () => { gameStarted.value = true; sync('遊戲開始！'); };
+        const startGame = () => { 
+            if (!answerSet.value) return alert("請先設定答案！");
+            gameStarted.value = true; 
+            sync('對局正式開始！'); 
+        };
 
         const sendGuess = () => {
+            if (guess.value <= range.value.min || guess.value >= range.value.max) return alert('請輸入有效範圍內的數字！');
             if (isHost.value) handleGuess(guess.value);
             else peer.connections[targetId.value][0].send({ type: 'GUESS', value: guess.value });
             guess.value = null;
@@ -191,7 +225,7 @@ createApp({
             return gameStarted.value && players.value[turnIndex.value]?.id === myId.value;
         });
 
-        return { auth, isLoggedIn, login, myId, targetId, isHost, isJoined, gameStarted, players, turnIndex, range, logs, guess, initHost, joinAsPlayer, startGame, sendGuess, isMyTurn, isCheater, remoteAnswer };
+        return { auth, isLoggedIn, handleLogin, myId, targetId, isHost, isJoined, gameStarted, answerSet, inputAnswer, confirmAnswer, players, turnIndex, range, logs, guess, initHost, joinAsPlayer, startGame, sendGuess, isMyTurn, isCheater, remoteAnswer };
     }
 }).mount('#app');
 </script>
