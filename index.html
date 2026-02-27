@@ -1,297 +1,153 @@
-<!doctype html>
-<html lang="zh-TW" class="h-full">
+<!DOCTYPE html>
+<html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>多人猜數字遊戲 - 管理員版</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script src="/_sdk/element_sdk.js"></script>
-  <script src="/_sdk/data_sdk.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&amp;display=swap" rel="stylesheet">
-  <style>
-    * { font-family: 'Noto Sans TC', sans-serif; }
-    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
-    @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.3); } 50% { box-shadow: 0 0 40px rgba(251, 191, 36, 0.6); } }
-    @keyframes bounce-in { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
-    .float-animation { animation: float 3s ease-in-out infinite; }
-    .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
-    .bounce-in { animation: bounce-in 0.6s ease-out forwards; }
-    .number-display { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border: 3px solid #fbbf24; }
-    .hint-higher { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-    .hint-lower { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
-    .hint-correct { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZeroTier PWA 猜數字</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root { --primary: #4a90e2; --bg: #f5f7fa; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
+        input { width: 80%; padding: 12px; margin: 10px 0; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; transition: 0.3s; width: 100%; margin: 5px 0; }
+        button:disabled { background: #ccc; }
+        .log-box { text-align: left; background: #eee; padding: 10px; border-radius: 8px; height: 150px; overflow-y: auto; margin-top: 15px; font-size: 14px; }
+        #qrcode { margin: 15px auto; display: flex; justify-content: center; }
+        .status { color: #666; font-size: 0.9rem; margin-bottom: 1rem; }
+    </style>
 </head>
-<body class="h-full bg-gradient-to-br from-indigo-950 via-purple-900 to-indigo-900 overflow-auto">
-  <div id="app" class="w-full min-h-full p-4 md:p-6">
-    
-    <div id="login-section" class="max-w-2xl mx-auto mb-6">
-      <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-        <h2 class="text-amber-300 font-bold text-lg mb-4">🔐 登入遊戲</h2>
-        <div class="space-y-3">
-          <input type="text" id="login-account" placeholder="輸入帳號" class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-amber-400">
-          <input type="password" id="login-password" placeholder="輸入密碼" class="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none focus:border-amber-400">
-          <button onclick="loginGame()" class="w-full px-4 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-indigo-950 font-bold rounded-xl transition-all transform active:scale-95">登入</button>
-          <div id="login-error" class="text-red-400 text-sm hidden text-center"></div>
-        </div>
-      </div>
+<body>
+
+<div id="app" class="container">
+    <h2>🔢 ZeroTier 猜數字</h2>
+    <p class="status">網路 ID: 8056c2e21cb160dd</p>
+
+    <div v-if="!gameState">
+        <p>我的 ID: <strong>{{ myId || '取得中...' }}</strong></p>
+        <button @click="startHost" :disabled="!myId">當房主 (開新局)</button>
+        <div style="margin: 20px 0; color: #aaa;">—— 或 ——</div>
+        <input v-model="joinId" placeholder="輸入房主 ID">
+        <button @click="joinGame" :disabled="!joinId">加入朋友的局</button>
     </div>
 
-    <header class="text-center mb-6">
-      <h1 id="game-title" class="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 float-animation">🎯 多人猜數字遊戲</h1>
-      <p id="welcome-msg" class="text-amber-200/80 mt-2 text-sm md:text-base">猜出 1-100 之間的神秘數字！</p>
-      <div id="login-status" class="text-amber-300 mt-2 font-bold hidden text-xl"></div>
-    </header>
-
-    <div class="max-w-4xl mx-auto">
-      <div id="game-status" class="mb-6">
-        <div class="number-display rounded-2xl p-6 text-center pulse-glow">
-          <div class="text-amber-200/60 text-sm mb-2">神秘數字範圍</div>
-          <div id="range-display" class="text-4xl md:text-5xl font-black text-white">1 ~ 100</div>
-          <div id="attempts-display" class="text-amber-300 mt-3 text-lg">第 <span id="attempt-count">0</span> 次猜測</div>
-        </div>
-      </div>
-
-      <div id="hint-container" class="mb-6 hidden">
-        <div id="hint-box" class="rounded-xl p-4 text-center text-white font-bold text-xl bounce-in"><span id="hint-text"></span></div>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-6 mb-6">
-        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-          <h2 class="text-amber-300 font-bold text-lg mb-4">👤 加入遊戲</h2>
-          <div id="join-section" class="hidden">
-            <div class="flex gap-3">
-              <input type="text" id="player-name-input" placeholder="輸入你的名字" class="flex-1 px-4 py-3 rounded-xl bg-white/10 border border-white/30 text-white placeholder-white/50 focus:outline-none">
-              <button id="join-btn" onclick="joinGame()" class="px-6 py-3 bg-amber-500 text-indigo-950 font-bold rounded-xl transition-all hover:scale-105 active:scale-95">加入</button>
-            </div>
-            <div id="join-error" class="text-red-400 text-sm mt-2 hidden"></div>
-          </div>
-          <div id="joined-section" class="hidden text-center">
-            <div class="text-amber-300 font-bold text-lg mb-3">你已加入遊戲 ✓</div>
-            <button onclick="changePlayerName()" class="w-full px-4 py-2 bg-white/10 text-white rounded-xl border border-white/20 hover:bg-white/20">🔄 更改名字</button>
-            <button onclick="logoutGame()" class="w-full px-4 py-2 bg-white/10 text-white rounded-xl border border-white/20 mt-2 hover:bg-white/20">🚪 登出</button>
-          </div>
-        </div>
-        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-          <h2 class="text-amber-300 font-bold text-lg mb-4">🎮 輪到誰？</h2>
-          <div id="current-player-display" class="text-2xl font-bold text-white/50">等待玩家加入...</div>
-          <div id="player-count" class="text-amber-200/60 text-sm mt-2">目前 0 位玩家</div>
-        </div>
-      </div>
-
-      <div id="guess-section" class="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20 mb-6 hidden">
-        <h2 class="text-amber-300 font-bold text-lg mb-4">🔢 輸入你的猜測</h2>
-        <div class="flex gap-3 items-center">
-          <input type="number" id="guess-input" min="1" max="100" class="flex-1 px-4 py-4 rounded-xl bg-white/10 border border-white/30 text-white text-2xl text-center font-bold">
-          <button id="guess-btn" onclick="makeGuess()" class="px-8 py-4 bg-green-500 text-white font-bold text-lg rounded-xl hover:scale-105 active:scale-95">猜！</button>
-        </div>
-        <div id="guess-error" class="text-red-400 text-sm mt-2 hidden"></div>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-6 mb-6">
-        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-          <h2 class="text-amber-300 font-bold text-lg mb-4">🏆 排行榜</h2>
-          <div id="leaderboard" class="space-y-3"><div class="text-white/50 text-center py-4">無記錄</div></div>
-        </div>
-        <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20">
-          <h2 class="text-amber-300 font-bold text-lg mb-4">📜 猜測記錄</h2>
-          <div id="guess-history" class="space-y-2 max-h-48 overflow-y-auto"><div class="text-white/50 text-center py-4">等待開始</div></div>
-        </div>
-      </div>
-
-      <div class="mt-6 flex justify-center gap-4">
-        <button onclick="resetGame()" class="px-6 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-500">🔄 新遊戲</button>
-        <button onclick="openClearModal()" class="px-6 py-3 bg-white/10 text-white/80 rounded-xl border border-white/20 hover:bg-white/20">🗑️ 清除玩家</button>
-      </div>
-    </div>
-
-    <div id="win-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
-      <div class="bg-indigo-900 rounded-3xl p-8 border-2 border-amber-400 text-center bounce-in mx-4">
-        <div class="text-6xl mb-4">🎉</div>
-        <h2 id="win-message" class="text-3xl font-black text-amber-400 mb-2"></h2>
-        <p id="win-details" class="text-white text-xl mb-6"></p>
-        <button onclick="closeWinModal()" class="px-8 py-3 bg-amber-500 text-indigo-950 font-bold rounded-xl">再玩一局</button>
-      </div>
-    </div>
-
-    <div id="clear-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50">
-      <div class="bg-slate-800 rounded-2xl p-6 border border-white/20 w-80">
-        <h3 class="text-white font-bold mb-4">⚠️ 清除所有玩家記錄</h3>
-        <input type="password" id="clear-password" placeholder="請輸入管理密碼" class="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/30 text-white mb-4">
-        <div id="clear-error" class="text-red-400 text-xs mb-4 hidden"></div>
-        <div class="flex gap-2">
-          <button onclick="closeClearModal()" class="flex-1 py-2 text-white/70 hover:bg-white/10 rounded-lg">取消</button>
-          <button onclick="confirmClearPlayers()" class="flex-1 py-2 bg-red-500 text-white rounded-lg">確認清除</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const accounts = {
-      '410201': 'ABC01', '410202': 'ABC02', '410203': 'ABC03', '410204': 'ABC04',
-      '410205': '981103', // 你的專屬帳號
-      '410206': 'ABC06', '410207': 'ABC07', '410208': 'ABC08', '410209': 'ABC09',
-      'SWRTC': '123456654321'
-    };
-    const adminClearPassword = '981103990420';
-
-    let gameState = {
-      secretNumber: 0, minRange: 1, maxRange: 100, attempts: 0,
-      currentPlayerIndex: 0, sessionPlayers: [], guessHistory: [],
-      gameActive: false, currentPlayerName: null, isLoggedIn: false, loginAccount: null
-    };
-
-    let allPlayers = [];
-
-    // 初始化
-    async function initApp() {
-      if (window.dataSdk) {
-        await window.dataSdk.init({ onDataChanged: (data) => { allPlayers = data || []; renderLeaderboard(); } });
-      }
-      startNewRound();
-    }
-
-    // 登入邏輯
-    function loginGame() {
-      const acc = document.getElementById('login-account').value.trim();
-      const pass = document.getElementById('login-password').value;
-      const errorDiv = document.getElementById('login-error');
-
-      if (accounts[acc] === pass) {
-        gameState.isLoggedIn = true;
-        gameState.loginAccount = acc;
-        document.getElementById('login-section').classList.add('hidden');
+    <div v-else>
+        <h3 v-if="isHost">我是房主 (答案: {{ answer }})</h3>
+        <h3 v-else>連線成功！開始猜測</h3>
         
-        let statusTag = (acc === 'SWRTC') ? ' 👑' : (acc === '410205' ? ' ✨(管理者)' : '');
-        document.getElementById('login-status').textContent = `✓ 已登入: ${acc}${statusTag}`;
-        document.getElementById('login-status').classList.remove('hidden');
-        document.getElementById('join-section').classList.remove('hidden');
+        <div v-if="isHost && !peerConnected" id="qrcode"></div>
+        <p v-if="isHost && !peerConnected">請朋友掃描或輸入 ID 加入</p>
+
+        <div v-if="peerConnected">
+            <input type="number" v-model.number="userGuess" placeholder="輸入 1-100">
+            <button @click="submitGuess">送出數字</button>
+        </div>
+
+        <div class="log-box">
+            <div v-for="msg in logs">👉 {{ msg }}</div>
+        </div>
+        <button @click="reset" style="background: #ff4757; margin-top: 10px;">結束遊戲</button>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted, nextTick } = Vue;
+
+createApp({
+    setup() {
+        const myId = ref('');
+        const joinId = ref('');
+        const gameState = ref(false); // false, 'playing'
+        const isHost = ref(false);
+        const peerConnected = ref(false);
+        const answer = ref(0);
+        const userGuess = ref(null);
+        const logs = ref(['等待開始...']);
         
-        // 外掛觸發
-        checkCheatCode();
-      } else {
-        errorDiv.textContent = '帳號或密碼錯誤！';
-        errorDiv.classList.remove('hidden');
-      }
+        let peer = null;
+        let conn = null;
+
+        onMounted(() => {
+            // 初始化 PeerJS
+            peer = new Peer();
+            peer.on('open', id => myId.value = id);
+            
+            // 房主監聽連線
+            peer.on('connection', c => {
+                conn = c;
+                isHost.value = true;
+                setupChat();
+            });
+
+            // 註冊 PWA Service Worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('sw.js');
+            }
+        });
+
+        const startHost = () => {
+            gameState.value = true;
+            isHost.value = true;
+            answer.value = Math.floor(Math.random() * 100) + 1;
+            nextTick(() => {
+                new QRCode(document.getElementById("qrcode"), {
+                    text: myId.value,
+                    width: 128, height: 128
+                });
+            });
+        };
+
+        const joinGame = () => {
+            conn = peer.connect(joinId.value);
+            gameState.value = true;
+            isHost.value = false;
+            setupChat();
+        };
+
+        const setupChat = () => {
+            conn.on('open', () => {
+                peerConnected.value = true;
+                logs.value.unshift("對方已連線！");
+            });
+            conn.on('data', data => {
+                if (isHost.value) {
+                    processGuess(data);
+                } else {
+                    logs.value.unshift(data);
+                }
+            });
+        };
+
+        const processGuess = (num) => {
+            let res = "";
+            if (num > answer.value) res = `${num} 太大了 ↑`;
+            else if (num < answer.value) res = `${num} 太小了 ↓`;
+            else res = `🎉 答對了！答案就是 ${num}`;
+            
+            logs.value.unshift(`玩家猜了 ${num}: ${res}`);
+            conn.send(res);
+        };
+
+        const submitGuess = () => {
+            if (userGuess.value === null) return;
+            if (isHost.value) {
+                processGuess(userGuess.value);
+            } else {
+                conn.send(userGuess.value);
+                logs.value.unshift(`你猜了 ${userGuess.value}...`);
+            }
+            userGuess.value = null;
+        };
+
+        const reset = () => { location.reload(); };
+
+        return { myId, joinId, gameState, isHost, peerConnected, answer, userGuess, logs, startHost, joinGame, submitGuess, reset };
     }
+}).mount('#app');
+</script>
 
-    function checkCheatCode() {
-      const msg = document.getElementById('welcome-msg');
-      if (gameState.loginAccount === '410205') {
-        msg.textContent = `🤫 噓... 答案是：${gameState.secretNumber}`;
-        msg.className = 'text-yellow-400 mt-2 font-black text-lg';
-      } else {
-        msg.textContent = '猜出 1-100 之間的神秘數字！';
-        msg.className = 'text-amber-200/80 mt-2 text-sm';
-      }
-    }
-
-    function generateSecretNumber() {
-      gameState.secretNumber = Math.floor(Math.random() * 100) + 1;
-      gameState.minRange = 1; gameState.maxRange = 100; gameState.attempts = 0;
-      gameState.guessHistory = []; gameState.gameActive = true;
-      updateDisplay();
-      checkCheatCode();
-    }
-
-    async function joinGame() {
-      const name = document.getElementById('player-name-input').value.trim();
-      if (!name || gameState.sessionPlayers.includes(name)) return;
-      
-      gameState.sessionPlayers.push(name);
-      gameState.currentPlayerName = name;
-      document.getElementById('join-section').classList.add('hidden');
-      document.getElementById('joined-section').classList.remove('hidden');
-      document.getElementById('guess-section').classList.remove('hidden');
-      updateCurrentPlayer();
-    }
-
-    async function makeGuess() {
-      const input = document.getElementById('guess-input');
-      const val = parseInt(input.value);
-      if (isNaN(val) || val < 1 || val > 100) return;
-
-      gameState.attempts++;
-      const player = gameState.sessionPlayers[gameState.currentPlayerIndex];
-      let res = val === gameState.secretNumber ? 'correct' : (val < gameState.secretNumber ? 'higher' : 'lower');
-      
-      gameState.guessHistory.unshift({ player, guess: val, result: res });
-      updateGuessHistory();
-
-      if (res === 'correct') {
-        gameState.gameActive = false;
-        showWinModal(player);
-      } else {
-        if (res === 'higher') gameState.minRange = Math.max(gameState.minRange, val + 1);
-        else gameState.maxRange = Math.min(gameState.maxRange, val - 1);
-        gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.sessionPlayers.length;
-        showHint(res === 'higher' ? '📈 太小了！' : '📉 太大了！', res);
-      }
-      input.value = ''; updateDisplay(); updateCurrentPlayer();
-    }
-
-    // UI 更新工具
-    function updateDisplay() {
-      document.getElementById('range-display').textContent = `${gameState.minRange} ~ ${gameState.maxRange}`;
-      document.getElementById('attempt-count').textContent = gameState.attempts;
-    }
-
-    function updateCurrentPlayer() {
-      const el = document.getElementById('current-player-display');
-      if (gameState.sessionPlayers.length > 0) {
-        el.textContent = `🎯 ${gameState.sessionPlayers[gameState.currentPlayerIndex]}`;
-        el.className = 'text-2xl font-bold text-amber-400';
-      }
-      document.getElementById('player-count').textContent = `目前 ${gameState.sessionPlayers.length} 位玩家`;
-    }
-
-    function updateGuessHistory() {
-      const h = document.getElementById('guess-history');
-      h.innerHTML = gameState.guessHistory.map(i => `<div class="p-2 rounded bg-white/5 border border-white/10 text-white flex justify-between"><span>${i.player}: <b>${i.guess}</b></span> <span class="text-xs opacity-60">${i.result}</span></div>`).join('');
-    }
-
-    function renderLeaderboard() {
-      const l = document.getElementById('leaderboard');
-      l.innerHTML = allPlayers.sort((a,b)=>b.score-a.score).slice(0,5).map(p => `<div class="flex justify-between text-white border-b border-white/10 pb-1"><span>${p.player_name}</span><span>${p.score}</span></div>`).join('');
-    }
-
-    function showHint(txt, type) {
-      const c = document.getElementById('hint-container');
-      const b = document.getElementById('hint-box');
-      document.getElementById('hint-text').textContent = txt;
-      b.className = `rounded-xl p-4 text-center text-white font-bold text-xl hint-${type}`;
-      c.classList.remove('hidden');
-    }
-
-    function showWinModal(p) {
-      document.getElementById('win-message').textContent = `${p} 猜中了！`;
-      document.getElementById('win-details').textContent = `答案：${gameState.secretNumber} | 次數：${gameState.attempts}`;
-      document.getElementById('win-modal').classList.replace('hidden', 'flex');
-    }
-
-    function closeWinModal() { document.getElementById('win-modal').classList.replace('flex', 'hidden'); resetGame(); }
-    function resetGame() { generateSecretNumber(); }
-    
-    function openClearModal() { document.getElementById('clear-modal').classList.replace('hidden', 'flex'); }
-    function closeClearModal() { document.getElementById('clear-modal').classList.replace('flex', 'hidden'); }
-    function confirmClearPlayers() {
-      if (document.getElementById('clear-password').value === adminClearPassword) {
-        gameState.sessionPlayers = []; gameState.currentPlayerName = null;
-        document.getElementById('joined-section').classList.add('hidden');
-        document.getElementById('join-section').classList.remove('hidden');
-        document.getElementById('guess-section').classList.add('hidden');
-        updateCurrentPlayer(); closeClearModal();
-      } else {
-        document.getElementById('clear-error').classList.remove('hidden');
-        document.getElementById('clear-error').textContent = '密碼錯誤！';
-      }
-    }
-
-    function logoutGame() { location.reload(); }
-
-    initApp();
-  </script>
 </body>
 </html>
-
