@@ -1,0 +1,15 @@
+{
+  "short_name": "ZT猜數字",
+  "name": "ZeroTier 多人猜數字遊戲",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1038/1038384.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#007bff",
+  "background_color": "#ffffff"
+}
