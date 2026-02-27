@@ -3,151 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZeroTier PWA 猜數字</title>
+    <title>ZT 猜數字 - 官方授權版</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        :root { --primary: #4a90e2; --bg: #f5f7fa; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
-        input { width: 80%; padding: 12px; margin: 10px 0; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
-        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; transition: 0.3s; width: 100%; margin: 5px 0; }
-        button:disabled { background: #ccc; }
-        .log-box { text-align: left; background: #eee; padding: 10px; border-radius: 8px; height: 150px; overflow-y: auto; margin-top: 15px; font-size: 14px; }
-        #qrcode { margin: 15px auto; display: flex; justify-content: center; }
-        .status { color: #666; font-size: 0.9rem; margin-bottom: 1rem; }
+        :root { --primary: #6c5ce7; --bg: #dfe6e9; --cheat: #ff4757; }
+        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; position: relative; }
+        .cheat-overlay { color: var(--cheat); font-weight: bold; font-size: 12px; margin-top: 5px; border: 1px dashed var(--cheat); padding: 5px; border-radius: 5px; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .range-box { font-size: 2.5rem; font-weight: bold; color: #d63031; margin: 20px 0; }
+        .player-list { background: #f1f2f6; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: left; }
+        input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; margin-bottom: 10px; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; width: 100%; }
+        .log { background: #2d3436; color: #fab1a0; padding: 10px; border-radius: 8px; height: 100px; overflow-y: auto; font-family: monospace; font-size: 13px; text-align: left; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
-    <h2>🔢 ZeroTier 猜數字</h2>
-    <p class="status">網路 ID: 8056c2e21cb160dd</p>
+    <h2>🔐 ZT 猜數字對戰</h2>
 
-    <div v-if="!gameState">
-        <p>我的 ID: <strong>{{ myId || '取得中...' }}</strong></p>
-        <button @click="startHost" :disabled="!myId">當房主 (開新局)</button>
-        <div style="margin: 20px 0; color: #aaa;">—— 或 ——</div>
-        <input v-model="joinId" placeholder="輸入房主 ID">
-        <button @click="joinGame" :disabled="!joinId">加入朋友的局</button>
+    <div v-if="!isLoggedIn">
+        <h3>帳號登入</h3>
+        <input v-model="auth.username" placeholder="遊戲 ID">
+        <input v-model="auth.password" type="password" placeholder="密碼">
+        <button @click="login">登入</button>
+    </div>
+
+    <div v-else-if="!gameStarted">
+        <div v-if="isCheater" class="cheat-overlay">⚠️ 官方外掛已啟動：身分驗證成功</div>
+        <p>歡迎回歸，{{ auth.username }}</p>
+        
+        <div v-if="!isJoined">
+            <button @click="initHost">建立新房間</button>
+            <input v-model="targetId" placeholder="房主 ID" style="margin-top:15px">
+            <button @click="joinAsPlayer" style="background:#00b894">加入對局</button>
+        </div>
+        <div v-else>
+            <div class="player-list">
+                <div v-for="(p, i) in players">
+                    {{ i+1 }}. {{ p.name }} {{ i === 0 ? '(房主)' : '' }}
+                </div>
+            </div>
+            <button v-if="isHost" @click="startGame">開始遊戲</button>
+            <p v-else>等待房主開始...</p>
+        </div>
     </div>
 
     <div v-else>
-        <h3 v-if="isHost">我是房主 (答案: {{ answer }})</h3>
-        <h3 v-else>連線成功！開始猜測</h3>
+        <div v-if="isCheater" class="cheat-overlay">
+            【系統追蹤】房主設定的數字是：{{ remoteAnswer }}
+        </div>
+
+        <div class="range-box">{{ range.min }} ~ {{ range.max }}</div>
         
-        <div v-if="isHost && !peerConnected" id="qrcode"></div>
-        <p v-if="isHost && !peerConnected">請朋友掃描或輸入 ID 加入</p>
+        <p v-if="isMyTurn" style="color:var(--primary); font-weight:bold;">🌟 輪到你了！</p>
+        <p v-else>等待 {{ players[turnIndex].name }}...</p>
 
-        <div v-if="peerConnected">
-            <input type="number" v-model.number="userGuess" placeholder="輸入 1-100">
-            <button @click="submitGuess">送出數字</button>
+        <div v-if="isMyTurn">
+            <input type="number" v-model.number="guess" :placeholder="'輸入 ' + range.min + '~' + range.max">
+            <button @click="sendGuess">確認送出</button>
         </div>
 
-        <div class="log-box">
-            <div v-for="msg in logs">👉 {{ msg }}</div>
+        <div class="log">
+            <div v-for="l in logs">{{ l }}</div>
         </div>
-        <button @click="reset" style="background: #ff4757; margin-top: 10px;">結束遊戲</button>
     </div>
 </div>
 
 <script>
-const { createApp, ref, onMounted, nextTick } = Vue;
+const { createApp, ref, computed } = Vue;
 
 createApp({
     setup() {
+        const auth = ref({ username: '', password: '' });
+        const isLoggedIn = ref(false);
         const myId = ref('');
-        const joinId = ref('');
-        const gameState = ref(false); // false, 'playing'
+        const targetId = ref('');
         const isHost = ref(false);
-        const peerConnected = ref(false);
-        const answer = ref(0);
-        const userGuess = ref(null);
-        const logs = ref(['等待開始...']);
+        const isJoined = ref(false);
+        const gameStarted = ref(false);
+        const players = ref([]);
+        const turnIndex = ref(0);
+        const range = ref({ min: 1, max: 100 });
+        const logs = ref([]);
+        const guess = ref(null);
         
-        let peer = null;
-        let conn = null;
+        const localAnswer = ref(0); // 房主端答案
+        const remoteAnswer = ref('?'); // 同步給外掛帳號的答案
+        
+        let peer, connections = [];
 
-        onMounted(() => {
-            // 初始化 PeerJS
-            peer = new Peer();
-            peer.on('open', id => myId.value = id);
-            
-            // 房主監聽連線
-            peer.on('connection', c => {
-                conn = c;
-                isHost.value = true;
-                setupChat();
-            });
-
-            // 註冊 PWA Service Worker
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js');
-            }
+        const isCheater = computed(() => {
+            return auth.value.username === '410205' && auth.value.password === '981103';
         });
 
-        const startHost = () => {
-            gameState.value = true;
-            isHost.value = true;
-            answer.value = Math.floor(Math.random() * 100) + 1;
-            nextTick(() => {
-                new QRCode(document.getElementById("qrcode"), {
-                    text: myId.value,
-                    width: 128, height: 128
+        const login = () => {
+            if (auth.value.username) {
+                isLoggedIn.value = true;
+                initPeer();
+            }
+        };
+
+        const initPeer = () => {
+            peer = new Peer();
+            peer.on('open', id => myId.value = id);
+            peer.on('connection', conn => {
+                if (!isHost.value) return;
+                conn.on('data', data => {
+                    if (data.type === 'JOIN') {
+                        connections.push(conn);
+                        players.value.push({ id: conn.peer, name: data.name });
+                        sync();
+                    }
+                    if (data.type === 'GUESS') handleGuess(data.value);
                 });
             });
         };
 
-        const joinGame = () => {
-            conn = peer.connect(joinId.value);
-            gameState.value = true;
-            isHost.value = false;
-            setupChat();
+        const initHost = () => {
+            isHost.value = true;
+            isJoined.value = true;
+            players.value.push({ id: myId.value, name: auth.value.username });
+            localAnswer.value = Math.floor(Math.random() * 100) + 1;
+            remoteAnswer.value = localAnswer.value;
         };
 
-        const setupChat = () => {
+        const joinAsPlayer = () => {
+            const conn = peer.connect(targetId.value);
             conn.on('open', () => {
-                peerConnected.value = true;
-                logs.value.unshift("對方已連線！");
+                conn.send({ type: 'JOIN', name: auth.value.username });
+                isJoined.value = true;
             });
             conn.on('data', data => {
-                if (isHost.value) {
-                    processGuess(data);
-                } else {
-                    logs.value.unshift(data);
+                if (data.type === 'SYNC') {
+                    range.value = data.range;
+                    turnIndex.value = data.turn;
+                    gameStarted.value = data.started;
+                    players.value = data.players;
+                    // 重點：房主同步數據時，也會把答案傳給連線者
+                    // 在正常介面不會顯示，只有 isCheater 會看到
+                    remoteAnswer.value = data.ans;
+                    if (data.msg) logs.value.unshift(data.msg);
                 }
+                if (data.type === 'WIN') alert('炸彈爆了！答案是 ' + data.ans);
             });
         };
 
-        const processGuess = (num) => {
-            let res = "";
-            if (num > answer.value) res = `${num} 太大了 ↑`;
-            else if (num < answer.value) res = `${num} 太小了 ↓`;
-            else res = `🎉 答對了！答案就是 ${num}`;
-            
-            logs.value.unshift(`玩家猜了 ${num}: ${res}`);
-            conn.send(res);
+        const sync = (msg) => {
+            const data = { 
+                type: 'SYNC', 
+                range: range.value, 
+                turn: turnIndex.value, 
+                started: gameStarted.value, 
+                players: players.value, 
+                ans: localAnswer.value, // 房主廣播答案（隱藏在數據包中）
+                msg 
+            };
+            connections.forEach(c => c.send(data));
         };
 
-        const submitGuess = () => {
-            if (userGuess.value === null) return;
-            if (isHost.value) {
-                processGuess(userGuess.value);
-            } else {
-                conn.send(userGuess.value);
-                logs.value.unshift(`你猜了 ${userGuess.value}...`);
+        const handleGuess = (val) => {
+            if (val === localAnswer.value) {
+                connections.forEach(c => c.send({ type: 'WIN', ans: localAnswer.value }));
+                alert('結束！答案是 ' + localAnswer.value);
+                return;
             }
-            userGuess.value = null;
+            if (val < localAnswer.value) range.value.min = Math.max(range.value.min, val);
+            else range.value.max = Math.min(range.value.max, val);
+            
+            turnIndex.value = (turnIndex.value + 1) % players.value.length;
+            sync(`玩家猜了 ${val}`);
+            logs.value.unshift(`玩家猜了 ${val}`);
         };
 
-        const reset = () => { location.reload(); };
+        const startGame = () => { gameStarted.value = true; sync('遊戲開始！'); };
 
-        return { myId, joinId, gameState, isHost, peerConnected, answer, userGuess, logs, startHost, joinGame, submitGuess, reset };
+        const sendGuess = () => {
+            if (isHost.value) handleGuess(guess.value);
+            else peer.connections[targetId.value][0].send({ type: 'GUESS', value: guess.value });
+            guess.value = null;
+        };
+
+        const isMyTurn = computed(() => {
+            return gameStarted.value && players.value[turnIndex.value]?.id === myId.value;
+        });
+
+        return { auth, isLoggedIn, login, myId, targetId, isHost, isJoined, gameStarted, players, turnIndex, range, logs, guess, initHost, joinAsPlayer, startGame, sendGuess, isMyTurn, isCheater, remoteAnswer };
     }
 }).mount('#app');
 </script>
-
 </body>
 </html>
